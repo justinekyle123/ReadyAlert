@@ -7,16 +7,34 @@ import 'package:flutter/foundation.dart';
 /// have no audio plugin, so failures are reported to the debug console instead
 /// of breaking the alert flow.
 class AlertSiren {
+  static const double _volume = 0.9;
+
   AudioPlayer? _player;
+  bool _muted = false;
+
+  bool get isMuted => _muted;
 
   Future<void> start() async {
     try {
       final player = _player ??= AudioPlayer();
       await player.setReleaseMode(ReleaseMode.loop);
-      await player.setVolume(0.9);
+      await player.setVolume(_muted ? 0 : _volume);
       await player.play(AssetSource('sounds/alert_siren.wav'));
     } catch (error) {
       debugPrint('Alert siren unavailable: $error');
+    }
+  }
+
+  /// Silences the siren while keeping the alert running.
+  ///
+  /// Volume is used rather than pause so unmuting picks the loop back up in
+  /// sync instead of restarting it.
+  Future<void> setMuted(bool muted) async {
+    _muted = muted;
+    try {
+      await _player?.setVolume(muted ? 0 : _volume);
+    } catch (error) {
+      debugPrint('Alert siren could not change volume: $error');
     }
   }
 

@@ -180,6 +180,36 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('muting the siren keeps the alert live', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpDashboard(tester);
+
+    final sendButton = find.byKey(const Key('send-alert-button'));
+    await tester.ensureVisible(sendButton);
+    await advance(tester);
+    await tester.tap(sendButton);
+    await advance(tester, 800);
+
+    final muteButton = find.byKey(const Key('mute-siren-button'));
+    expect(muteButton, findsOneWidget);
+    expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
+
+    await tester.tap(muteButton);
+    await advance(tester, 300);
+
+    expect(find.byIcon(Icons.volume_off_rounded), findsOneWidget);
+    expect(find.byKey(const Key('active-alert-title')), findsOneWidget);
+    expect(find.byKey(const Key('send-alert-button')), findsNothing);
+
+    await tester.tap(muteButton);
+    await advance(tester, 300);
+
+    expect(find.byIcon(Icons.volume_up_rounded), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('header theme toggle switches between light and dark', (
     tester,
   ) async {

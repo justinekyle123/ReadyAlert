@@ -27,6 +27,9 @@ class _ActiveAlertViewState extends State<ActiveAlertView>
 
   final AlertSiren _siren = AlertSiren();
 
+  /// Muted hides the siren only; the alert itself stays live.
+  bool _muted = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +60,11 @@ class _ActiveAlertViewState extends State<ActiveAlertView>
   void _stop() {
     unawaited(_siren.stop());
     widget.onStop();
+  }
+
+  void _toggleMuted() {
+    setState(() => _muted = !_muted);
+    unawaited(_siren.setMuted(_muted));
   }
 
   @override
@@ -158,27 +166,53 @@ class _ActiveAlertViewState extends State<ActiveAlertView>
           ),
         ),
         const SizedBox(height: 26),
-        SizedBox(
-          width: 200,
-          child: OutlinedButton.icon(
-            key: const Key('stop-alert-button'),
-            onPressed: _stop,
-            style: OutlinedButton.styleFrom(
-              backgroundColor: palette.surface,
-              foregroundColor: palette.textPrimary,
-              side: BorderSide(color: palette.border),
-              minimumSize: const Size.fromHeight(50),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              textStyle: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 188,
+              child: OutlinedButton.icon(
+                key: const Key('stop-alert-button'),
+                onPressed: _stop,
+                style: OutlinedButton.styleFrom(
+                  backgroundColor: palette.surface,
+                  foregroundColor: palette.textPrimary,
+                  side: BorderSide(color: palette.border),
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                icon: const Icon(Icons.stop_rounded, size: 20),
+                label: const Text('Stop'),
               ),
             ),
-            icon: const Icon(Icons.stop_rounded, size: 20),
-            label: const Text('Stop'),
-          ),
+            const SizedBox(width: 8),
+            IconButton.outlined(
+              key: const Key('mute-siren-button'),
+              onPressed: _toggleMuted,
+              tooltip: _muted ? 'Unmute siren' : 'Mute siren',
+              style: IconButton.styleFrom(
+                backgroundColor: palette.surface,
+                foregroundColor: _muted
+                    ? palette.textSecondary
+                    : palette.textPrimary,
+                side: BorderSide(color: palette.border),
+                minimumSize: const Size(50, 50),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              icon: Icon(
+                _muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                size: 20,
+              ),
+            ),
+          ],
         ),
       ],
     );
