@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_palette.dart';
 import '../../../../core/utils/relative_time.dart';
 import '../../../../shared/widgets/fade_slide_in.dart';
-import '../../data/alerts_mock_data.dart';
+import '../../../auth/application/session_controller.dart';
+import '../../../auth/domain/models/app_user.dart';
+import '../../data/alert_repository.dart';
 import '../../domain/models/alert_activity.dart';
 import '../theme/alert_level_style.dart';
 
@@ -20,30 +24,57 @@ class AlertsScreen extends StatefulWidget {
 }
 
 class _AlertsScreenState extends State<AlertsScreen> {
-  late final List<AlertActivity> _alerts = AlertsMockData.initial(
-    DateTime.now(),
-  );
+  final AlertRepository _repository = AlertRepository();
+
+  AppUser? _user;
+  List<AlertActivity> _alerts = const [];
 
   int get _unreadCount => _alerts.where((alert) => alert.isUnread).length;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = SessionScope.of(context).user;
+    if (user == null || user.id == _user?.id) {
+      return;
+    }
+    _user = user;
+    _load(user);
+  }
+
+  Future<void> _load(AppUser user) async {
+    final alerts = await _repository.historyFor(user);
+    if (!mounted || user.id != _user?.id) {
+      return;
+    }
+    setState(() => _alerts = alerts);
+  }
+
   void _markAllRead() {
-    if (_unreadCount == 0) {
+    final user = _user;
+    if (user == null || _unreadCount == 0) {
       return;
     }
     setState(() {
-      for (var index = 0; index < _alerts.length; index++) {
-        _alerts[index] = _alerts[index].copyWith(isUnread: false);
-      }
+      _alerts = [for (final alert in _alerts) alert.copyWith(isUnread: false)];
     });
+    unawaited(_repository.markAllRead(user));
   }
 
   void _markRead(int index) {
-    if (!_alerts[index].isUnread) {
+    final alert = _alerts[index];
+    if (!alert.isUnread) {
       return;
     }
-    setState(() {
-      _alerts[index] = _alerts[index].copyWith(isUnread: false);
-    });
+    final updated = List<AlertActivity>.of(_alerts);
+    updated[index] = alert.copyWith(isUnread: false);
+    setState(() => _alerts = updated);
+
+    final user = _user;
+    final id = alert.id;
+    if (user != null && id != null) {
+      unawaited(_repository.markRead(user, id));
+    }
   }
 
   List<Widget> _buildFeed(BuildContext context) {

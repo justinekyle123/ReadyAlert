@@ -9,12 +9,18 @@ import 'package:flutter/foundation.dart';
 class AlertSiren {
   static const double _volume = 0.9;
 
+  /// Test harnesses clear this because they have no audio plugin at all.
+  static bool enabled = true;
+
   AudioPlayer? _player;
   bool _muted = false;
 
   bool get isMuted => _muted;
 
   Future<void> start() async {
+    if (!enabled) {
+      return;
+    }
     try {
       final player = _player ??= AudioPlayer();
       await player.setReleaseMode(ReleaseMode.loop);

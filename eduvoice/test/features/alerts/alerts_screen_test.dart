@@ -1,14 +1,9 @@
-import 'package:eduvoice/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> pumpShell(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const ReadyAlertApp(showSplash: false, showLogin: false),
-  );
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 1200));
-}
+import '../../helpers/app_test_harness.dart';
+
+Future<void> pumpShell(WidgetTester tester) => pumpHostShell(tester);
 
 Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
   await tester.pump();
@@ -27,6 +22,10 @@ double unreadDotScale(WidgetTester tester, int index) {
 }
 
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('alerts tab lists the history grouped by day', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -37,7 +36,8 @@ void main() {
 
     expect(find.text('Today'), findsOneWidget);
     expect(find.text('Yesterday'), findsOneWidget);
-    expect(find.text('Emergency alert broadcast'), findsOneWidget);
+    // The dashboard's recent activity shows the same broadcast row.
+    expect(find.text('Emergency alert broadcast'), findsWidgets);
     expect(find.text('Emergency alert cancelled'), findsOneWidget);
     expect(find.text('Monthly earthquake drill'), findsWidgets);
     expect(unreadDotScale(tester, 0), 1);

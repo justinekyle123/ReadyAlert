@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/database/account_defaults.dart';
 import '../core/theme/app_palette.dart';
+import '../features/auth/application/session_controller.dart';
 import '../features/alerts/presentation/screens/alerts_screen.dart';
 import '../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../features/groups/presentation/screens/groups_screen.dart';
 import '../features/profile/presentation/screens/profile_screen.dart';
+import '../features/volunteers/presentation/sheets/add_user_sheet.dart';
+import '../features/volunteers/presentation/sheets/create_group_sheet.dart';
 import 'add_menu.dart';
 
 /// Height of the docked `+` button.
@@ -48,18 +52,62 @@ class _MainShellState extends State<MainShell> {
     setState(() => _addMenuOpen = false);
   }
 
-  void _showAddMessage(String action) {
+  Future<void> _addUser() async {
     _closeAddMenu();
-    ScaffoldMessenger.of(context)
+    final user = SessionScope.of(context).user;
+    if (user == null) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final account = await showAddUserSheet(context, actor: user);
+    if (!mounted || account == null) {
+      return;
+    }
+
+    messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        SnackBar(content: Text('$action will be available soon.')),
+        SnackBar(
+          content: Text(
+            '${account.user.name} added as ${account.user.role.label}.\n'
+            'Sign in with ${account.schoolId} · password '
+            '$defaultAccountPassword',
+          ),
+        ),
+      );
+  }
+
+  Future<void> _addGroup() async {
+    _closeAddMenu();
+    final user = SessionScope.of(context).user;
+    if (user == null) {
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    final group = await showCreateGroupSheet(context, actor: user);
+    if (!mounted || group == null) {
+      return;
+    }
+
+    final leaderLine = group.leaderId == null
+        ? 'Assign a leader any time from the Groups tab.'
+        : '${group.leader} leads it.';
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text('${group.name} created. $leaderLine')),
       );
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
+    final permissions = SessionScope.of(context).permissions;
+    final showAddUser = permissions.canAddUsers;
+    final showAddGroup = permissions.canAddGroups;
+    final showAddMenu = showAddUser || showAddGroup;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final navBarHeight = Theme.of(context).navigationBarTheme.height ?? 68;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -139,20 +187,24 @@ class _MainShellState extends State<MainShell> {
             ),
           ),
           // Docked on the bottom bar: sits half over it so it reads as part
-          // of the bar instead of floating above the page content.
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: navBarHeight + bottomInset - _addButtonDock,
-            child: Center(
-              child: AddMenu(
-                open: _addMenuOpen,
-                onToggle: _toggleAddMenu,
-                onAddUser: () => _showAddMessage('Adding users'),
-                onAddGroup: () => _showAddMessage('Creating groups'),
+          // of the bar instead of floating above the page content. Members
+          // get no add menu at all.
+          if (showAddMenu)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: navBarHeight + bottomInset - _addButtonDock,
+              child: Center(
+                child: AddMenu(
+                  open: _addMenuOpen,
+                  showAddUser: showAddUser,
+                  showAddGroup: showAddGroup,
+                  onToggle: _toggleAddMenu,
+                  onAddUser: _addUser,
+                  onAddGroup: _addGroup,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

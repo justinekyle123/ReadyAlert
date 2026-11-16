@@ -1,15 +1,10 @@
-import 'package:eduvoice/app/app.dart';
 import 'package:eduvoice/features/groups/presentation/screens/groups_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> pumpShell(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const ReadyAlertApp(showSplash: false, showLogin: false),
-  );
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 1200));
-}
+import '../../helpers/app_test_harness.dart';
+
+Future<void> pumpShell(WidgetTester tester) => pumpHostShell(tester);
 
 Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
   await tester.pump();
@@ -17,6 +12,10 @@ Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
 }
 
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('groups tab shows the group rosters', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

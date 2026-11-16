@@ -4,20 +4,105 @@ import '../../../../core/theme/app_palette.dart';
 import '../../../../shared/widgets/fade_slide_in.dart';
 import '../../../../shared/widgets/section_header.dart';
 import '../../../../shared/widgets/status_chip.dart';
-import '../../../volunteers/data/volunteer_groups_mock_data.dart';
+import '../../../auth/application/session_controller.dart';
+import '../../../auth/domain/models/app_user.dart';
+import '../../../volunteers/application/roster_controller.dart';
+import '../../../volunteers/data/group_repository.dart';
+import '../../../volunteers/domain/models/roster_exception.dart';
 import '../../../volunteers/domain/models/volunteer_group.dart';
+import '../../../volunteers/presentation/sheets/leader_picker_sheet.dart';
 
 /// Volunteer groups: the rosters the host reaches when an alert goes out.
-class GroupsScreen extends StatelessWidget {
+class GroupsScreen extends StatefulWidget {
   const GroupsScreen({super.key, this.onBack});
 
   /// Returns to the Home tab; groups live inside the shell.
   final VoidCallback? onBack;
 
   @override
+  State<GroupsScreen> createState() => _GroupsScreenState();
+}
+
+class _GroupsScreenState extends State<GroupsScreen> {
+  final GroupRepository _repository = GroupRepository();
+
+  AppUser? _user;
+  List<VolunteerGroup> _groups = const [];
+  int _rosterRevision = -1;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = SessionScope.of(context).user;
+    final revision = RosterScope.of(context).revision;
+    if (user == null || (user.id == _user?.id && revision == _rosterRevision)) {
+      return;
+    }
+    _user = user;
+    _rosterRevision = revision;
+    _load(user);
+  }
+
+  Future<void> _load(AppUser user) async {
+    final groups = await _repository.groupsFor(user);
+    if (!mounted || user.id != _user?.id) {
+      return;
+    }
+    setState(() => _groups = groups);
+  }
+
+  Future<void> _assignLeader(VolunteerGroup group) async {
+    final user = _user;
+    if (user == null) {
+      return;
+    }
+
+    final roster = RosterScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final picked = await showLeaderPickerSheet(
+      context,
+      actor: user,
+      groupId: group.id,
+      currentLeaderId: group.leaderId,
+      subtitle:
+          'Choose who leads ${group.name}. They can send alerts to this '
+          'roster.',
+    );
+    if (!mounted || picked == null || picked.id == group.leaderId) {
+      return;
+    }
+
+    try {
+      await roster.assignLeader(
+        actor: user,
+        groupId: group.id,
+        userId: picked.id,
+      );
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('${picked.name} now leads ${group.name}.')),
+        );
+    } on RosterException catch (error) {
+      if (!mounted) {
+        return;
+      }
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = context.palette;
-    final groups = VolunteerGroupsMockData.groups;
+    final groups = _groups;
+    final canAssignLeaders = SessionScope.of(
+      context,
+    ).permissions.canAssignLeaders;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -40,7 +125,7 @@ class GroupsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FadeSlideIn(child: _GroupsTopBar(onBack: onBack)),
+                  FadeSlideIn(child: _GroupsTopBar(onBack: widget.onBack)),
                   const SizedBox(height: 18),
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 60),
@@ -55,11 +140,24 @@ class GroupsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (groups.isEmpty)
+                    Text(
+                      'No volunteer group is assigned to this account yet.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontSize: 12,
+                        color: palette.textSecondary,
+                      ),
+                    ),
                   for (var index = 0; index < groups.length; index++) ...[
                     FadeSlideIn(
                       key: Key('group-tile-${groups[index].name}'),
                       delay: Duration(milliseconds: 170 + 40 * index),
-                      child: _GroupTile(group: groups[index]),
+                      child: _GroupTile(
+                        group: groups[index],
+                        onAssignLeader: canAssignLeaders
+                            ? () => _assignLeader(groups[index])
+                            : null,
+                      ),
                     ),
                     if (index != groups.length - 1) const SizedBox(height: 10),
                   ],
@@ -188,9 +286,12 @@ class _SummaryDivider extends StatelessWidget {
 }
 
 class _GroupTile extends StatelessWidget {
-  const _GroupTile({required this.group});
+  const _GroupTile({required this.group, this.onAssignLeader});
 
   final VolunteerGroup group;
+
+  /// Hosts can tap a roster to choose its leader; others get a static tile.
+  final VoidCallback? onAssignLeader;
 
   (Color, Color) _statusColors(AppPalette palette) => switch (group.status) {
     GroupReportStatus.safe => (palette.alertGreenOn, palette.alertGreenSoft),
@@ -210,71 +311,91 @@ class _GroupTile extends StatelessWidget {
     final palette = context.palette;
     final (foreground, background) = _statusColors(palette);
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: palette.surface,
+    return Material(
+      color: palette.surface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: palette.border),
+        side: BorderSide(color: palette.border),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(Icons.groups_2_rounded, size: 22, color: foreground),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  group.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.1,
-                  ),
+      child: InkWell(
+        key: onAssignLeader == null ? null : Key('group-leader-${group.name}'),
+        onTap: onAssignLeader,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(height: 3),
-                Row(
+                child: Icon(
+                  Icons.groups_2_rounded,
+                  size: 22,
+                  color: foreground,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.person_outline_rounded,
-                      size: 12,
-                      color: palette.textSecondary,
+                    Text(
+                      group.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.1,
+                      ),
                     ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        '${group.leader} · ${group.memberCount} members',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 11.5,
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_outline_rounded,
+                          size: 12,
                           color: palette.textSecondary,
                         ),
-                      ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            '${group.leader} · '
+                            '${group.memberCount} members',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11.5,
+                              color: palette.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              StatusChip(
+                label: group.status.label,
+                foreground: foreground,
+                background: background,
+              ),
+              if (onAssignLeader != null) ...[
+                const SizedBox(width: 2),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 18,
+                  color: palette.textSecondary,
+                ),
               ],
-            ),
+            ],
           ),
-          const SizedBox(width: 8),
-          StatusChip(
-            label: group.status.label,
-            foreground: foreground,
-            background: background,
-          ),
-        ],
+        ),
       ),
     );
   }

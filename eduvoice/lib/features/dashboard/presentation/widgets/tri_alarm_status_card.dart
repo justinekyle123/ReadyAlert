@@ -14,6 +14,7 @@ class TriAlarmStatusCard extends StatefulWidget {
     required this.lastUpdated,
     required this.groupCount,
     required this.onSend,
+    this.canSend = true,
   });
 
   /// The alert level that was last sent.
@@ -23,6 +24,9 @@ class TriAlarmStatusCard extends StatefulWidget {
 
   /// Called with the level currently dialled in.
   final ValueChanged<AlertLevel> onSend;
+
+  /// False for roles that may read the dial but not send it.
+  final bool canSend;
 
   @override
   State<TriAlarmStatusCard> createState() => _TriAlarmStatusCardState();
@@ -87,7 +91,10 @@ class _TriAlarmStatusCardState extends State<TriAlarmStatusCard> {
           ),
         ),
         const SizedBox(height: 20),
-        _SendButton(level: level, onPressed: () => widget.onSend(level)),
+        if (widget.canSend)
+          _SendButton(level: level, onPressed: () => widget.onSend(level))
+        else
+          const _SendRestrictedNotice(),
         const SizedBox(height: 12),
         Center(
           child: Text(
@@ -359,6 +366,40 @@ class _AlarmLevelButtonState extends State<_AlarmLevelButton>
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SendRestrictedNotice extends StatelessWidget {
+  const _SendRestrictedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.palette;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.surfaceMuted,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.lock_outline_rounded,
+            size: 16,
+            color: palette.textSecondary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Only hosts and youth leaders can send alerts.',
+              style: TextStyle(fontSize: 11.5, color: palette.textSecondary),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,24 +1,21 @@
-import 'package:eduvoice/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/app_test_harness.dart';
 
 /// The dashboard keeps a looping pulse animation alive on the selected alert
 /// button, so tests step time forward explicitly instead of waiting for the
 /// whole tree to settle.
-Future<void> pumpDashboard(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const ReadyAlertApp(showSplash: false, showLogin: false),
-  );
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 1200));
-}
+Future<void> pumpDashboard(WidgetTester tester) => pumpHostShell(tester);
 
-Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
-  await tester.pump();
-  await tester.pump(Duration(milliseconds: milliseconds));
-}
+Future<void> advance(WidgetTester tester, [int milliseconds = 600]) =>
+    settle(tester, milliseconds);
 
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('dashboard shows the tri-alarm dial and groups', (tester) async {
     await pumpDashboard(tester);
 

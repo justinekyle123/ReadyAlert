@@ -12,12 +12,18 @@ class AddMenu extends StatefulWidget {
     required this.onToggle,
     required this.onAddUser,
     required this.onAddGroup,
+    this.showAddUser = true,
+    this.showAddGroup = true,
   });
 
   final bool open;
   final VoidCallback onToggle;
   final VoidCallback onAddUser;
   final VoidCallback onAddGroup;
+
+  /// Roles that cannot manage users or groups hide the matching action.
+  final bool showAddUser;
+  final bool showAddGroup;
 
   @override
   State<AddMenu> createState() => _AddMenuState();
@@ -74,29 +80,36 @@ class _AddMenuState extends State<AddMenu> with SingleTickerProviderStateMixin {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (showActions) ...[
-              _AddAction(
-                key: const Key('add-user-button'),
-                animation: _userStage,
-                enabled: widget.open,
-                icon: Icons.person_add_alt_1_rounded,
-                label: 'Add user',
-                tint: _AddTint.coral,
-                onTap: widget.onAddUser,
-              ),
-              const SizedBox(height: 10),
-              _AddAction(
-                key: const Key('add-group-button'),
-                animation: _groupStage,
-                enabled: widget.open,
-                icon: Icons.group_add_rounded,
-                label: 'Add group',
-                tint: _AddTint.green,
-                onTap: widget.onAddGroup,
-              ),
+              if (widget.showAddUser)
+                _AddAction(
+                  key: const Key('add-user-button'),
+                  animation: _userStage,
+                  enabled: widget.open,
+                  icon: Icons.person_add_alt_1_rounded,
+                  label: 'Add user',
+                  tint: _AddTint.coral,
+                  onTap: widget.onAddUser,
+                ),
+              if (widget.showAddUser && widget.showAddGroup)
+                const SizedBox(height: 10),
+              if (widget.showAddGroup)
+                _AddAction(
+                  key: const Key('add-group-button'),
+                  animation: _groupStage,
+                  enabled: widget.open,
+                  icon: Icons.group_add_rounded,
+                  label: 'Add group',
+                  tint: _AddTint.green,
+                  onTap: widget.onAddGroup,
+                ),
               const SizedBox(height: 14),
             ],
             Tooltip(
-              message: widget.open ? 'Close' : 'Add user or group',
+              message: widget.open
+                  ? 'Close'
+                  : widget.showAddGroup
+                  ? 'Add user or group'
+                  : 'Add user',
               child: Material(
                 color: Colors.transparent,
                 child: InkWell(

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../shared/widgets/fade_slide_in.dart';
+import '../../application/session_controller.dart';
+import '../../data/auth_repository.dart';
 import '../widgets/emergency_hero.dart';
 import '../widgets/login_background.dart';
 
@@ -19,9 +21,12 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _identifierController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _authRepository = AuthRepository();
 
   bool _obscurePassword = true;
   bool _rememberMe = false;
+  bool _signingIn = false;
+  String? _authError;
 
   @override
   void dispose() {
@@ -30,11 +35,36 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     FocusManager.instance.primaryFocus?.unfocus();
-    if (_formKey.currentState?.validate() ?? false) {
-      widget.onSignedIn();
+    if (!(_formKey.currentState?.validate() ?? false) || _signingIn) {
+      return;
     }
+
+    setState(() {
+      _signingIn = true;
+      _authError = null;
+    });
+
+    final user = await _authRepository.signIn(
+      identifier: _identifierController.text,
+      password: _passwordController.text,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (user == null) {
+      setState(() {
+        _signingIn = false;
+        _authError = 'Those sign-in details did not match an account.';
+      });
+      return;
+    }
+
+    SessionScope.of(context).signIn(user);
+    widget.onSignedIn();
   }
 
   void _showRecoveryMessage() {
@@ -373,6 +403,21 @@ class _LoginScreenState extends State<LoginScreen> {
                                               ),
                                             ],
                                           ),
+                                          if (_authError != null) ...[
+                                            const SizedBox(height: 12),
+                                            Text(
+                                              _authError!,
+                                              key: const Key('login-error'),
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                height: 1.3,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.alertYellowSoft
+                                                    .withValues(alpha: 0.95),
+                                              ),
+                                            ),
+                                          ],
                                           const SizedBox(height: 18),
                                           Container(
                                             decoration: BoxDecoration(
@@ -389,7 +434,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ),
                                             child: FilledButton(
                                               key: const Key('login-submit'),
-                                              onPressed: _submit,
+                                              onPressed: _signingIn
+                                                  ? null
+                                                  : _submit,
                                               style: FilledButton.styleFrom(
                                                 backgroundColor: Colors.white,
                                                 foregroundColor:
@@ -402,26 +449,39 @@ class _LoginScreenState extends State<LoginScreen> {
                                                       BorderRadius.circular(16),
                                                 ),
                                               ),
-                                              child: const Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment.center,
-                                                children: [
-                                                  Text(
-                                                    'Sign in',
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      fontWeight:
-                                                          FontWeight.w700,
-                                                      letterSpacing: 0.1,
+                                              child: _signingIn
+                                                  ? const SizedBox(
+                                                      width: 20,
+                                                      height: 20,
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            strokeWidth: 2.2,
+                                                            color: AppColors
+                                                                .primaryDark,
+                                                          ),
+                                                    )
+                                                  : const Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        Text(
+                                                          'Sign in',
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            letterSpacing: 0.1,
+                                                          ),
+                                                        ),
+                                                        SizedBox(width: 8),
+                                                        Icon(
+                                                          Icons
+                                                              .arrow_forward_rounded,
+                                                          size: 18,
+                                                        ),
+                                                      ],
                                                     ),
-                                                  ),
-                                                  SizedBox(width: 8),
-                                                  Icon(
-                                                    Icons.arrow_forward_rounded,
-                                                    size: 18,
-                                                  ),
-                                                ],
-                                              ),
                                             ),
                                           ),
                                         ],

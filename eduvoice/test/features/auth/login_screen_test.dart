@@ -2,7 +2,13 @@ import 'package:eduvoice/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../helpers/app_test_harness.dart';
+
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('login validates the form and opens the dashboard', (
     tester,
   ) async {
@@ -35,8 +41,8 @@ void main() {
     await tester.pump();
 
     await tester.tap(submit);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 1200));
+    await settle(tester, 1200);
+    await settle(tester, 1200);
 
     expect(find.byType(NavigationBar), findsOneWidget);
     expect(find.text('All Clear'), findsOneWidget);

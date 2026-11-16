@@ -1,14 +1,9 @@
-import 'package:eduvoice/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> pumpShell(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const ReadyAlertApp(showSplash: false, showLogin: false),
-  );
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 1200));
-}
+import '../helpers/app_test_harness.dart';
+
+Future<void> pumpShell(WidgetTester tester) => pumpHostShell(tester);
 
 Future<void> advance(WidgetTester tester, [int milliseconds = 700]) async {
   await tester.pump();
@@ -16,6 +11,10 @@ Future<void> advance(WidgetTester tester, [int milliseconds = 700]) async {
 }
 
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('the plus button reveals both add actions', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -33,9 +32,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('choosing an add action reports that it is not wired up', (
-    tester,
-  ) async {
+  testWidgets('the add user action opens the volunteer form', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpShell(tester);
+    await tester.tap(find.byKey(const Key('add-menu-button')));
+    await advance(tester);
+
+    await tester.tap(find.byKey(const Key('add-user-button')));
+    await advance(tester);
+
+    expect(find.byKey(const Key('add-user-name')), findsOneWidget);
+    expect(find.byKey(const Key('default-password-note')), findsOneWidget);
+    expect(find.text('Add user'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the add group action opens the group form', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -46,11 +60,9 @@ void main() {
     await tester.tap(find.byKey(const Key('add-group-button')));
     await advance(tester);
 
-    expect(
-      find.text('Creating groups will be available soon.'),
-      findsOneWidget,
-    );
-    expect(find.text('Add user'), findsNothing);
+    expect(find.text('New volunteer group'), findsOneWidget);
+    expect(find.byKey(const Key('create-group-name')), findsOneWidget);
+    expect(find.text('Add group'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

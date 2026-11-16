@@ -1,14 +1,9 @@
-import 'package:eduvoice/app/app.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> pumpShell(WidgetTester tester) async {
-  await tester.pumpWidget(
-    const ReadyAlertApp(showSplash: false, showLogin: false),
-  );
-  await tester.pump();
-  await tester.pump(const Duration(milliseconds: 1200));
-}
+import '../../helpers/app_test_harness.dart';
+
+Future<void> pumpShell(WidgetTester tester) => pumpHostShell(tester);
 
 Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
   await tester.pump();
@@ -16,6 +11,10 @@ Future<void> advance(WidgetTester tester, [int milliseconds = 600]) async {
 }
 
 void main() {
+  setUp(() async {
+    await setUpTestDatabase();
+  });
+
   testWidgets('profile tab shows the profile page', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -54,6 +53,30 @@ void main() {
     await tester.tap(toggle);
     await advance(tester, 700);
     expect(find.text('Read more'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('hamburger opens settings and logout returns to login', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpShell(tester);
+    await tester.tap(find.byKey(const Key('nav-profile')));
+    await advance(tester);
+
+    await tester.tap(find.byKey(const Key('profile-settings-menu')));
+    await advance(tester, 700);
+    expect(find.text('Settings'), findsOneWidget);
+
+    final logout = find.byKey(const Key('settings-logout'));
+    await tester.ensureVisible(logout);
+    await advance(tester);
+    await tester.tap(logout);
+    await advance(tester, 900);
+
+    expect(find.byKey(const Key('login-email')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

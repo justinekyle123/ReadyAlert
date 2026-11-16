@@ -1,6 +1,21 @@
 # eduvoice
 
-A new Flutter project.
+Ready Alert stores its accounts, volunteer groups, alert history and readiness
+skills in a local SQLite database (`ready_alert.db`). No cloud services are
+used yet.
+
+## Demo accounts
+
+Every seeded account uses the password `ready123`.
+
+| Role | School ID |
+| --- | --- |
+| Host | `juan.delacruz` |
+| Youth volunteer leader | `maria.santos`, `jose.reyes`, `ana.cruz`, `mark.lim` |
+| Member | e.g. `andrea.bautista` |
+
+Hosts see every group and can broadcast to all of them, youth leaders see and
+alert their own group, and members have read-only access.
 
 ## Getting Started
 

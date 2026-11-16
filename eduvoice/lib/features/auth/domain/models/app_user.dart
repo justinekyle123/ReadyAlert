@@ -8,12 +8,37 @@ enum UserRole {
   final String label;
 }
 
+/// A signed-in account, read from the local `users` table.
 class AppUser {
-  const AppUser({required this.name, required this.role, required this.school});
+  const AppUser({
+    required this.id,
+    required this.name,
+    required this.role,
+    required this.school,
+    this.groupId,
+    this.about,
+  });
 
+  factory AppUser.fromMap(Map<String, Object?> map) {
+    return AppUser(
+      id: map['id'] as int,
+      name: map['name'] as String,
+      role: UserRole.values.byName(map['role'] as String),
+      school: map['school'] as String,
+      groupId: map['group_id'] as int?,
+      about: map['about'] as String?,
+    );
+  }
+
+  final int id;
   final String name;
   final UserRole role;
   final String school;
+
+  /// The volunteer group this account belongs to; hosts oversee every group.
+  final int? groupId;
+
+  final String? about;
 
   String get firstName {
     final parts = name.trim().split(RegExp(r'\s+'));

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../features/auth/application/session_controller.dart';
 import '../features/auth/presentation/screens/login_screen.dart';
 import '../features/splash/presentation/screens/splash_screen.dart';
 import 'main_shell.dart';
@@ -39,8 +40,13 @@ class _AppLauncherState extends State<AppLauncher> {
     setState(() => _stage = _AppStage.shell);
   }
 
-  Widget _buildStage() {
-    return switch (_stage) {
+  Widget _buildStage(bool signedIn) {
+    // Signing out anywhere in the app drops back to the login screen.
+    final stage = _stage == _AppStage.shell && !signedIn
+        ? _AppStage.login
+        : _stage;
+
+    return switch (stage) {
       _AppStage.splash => SplashScreen(
         key: const ValueKey('splash'),
         onFinished: _finishSplash,
@@ -55,6 +61,8 @@ class _AppLauncherState extends State<AppLauncher> {
 
   @override
   Widget build(BuildContext context) {
+    final session = SessionScope.of(context);
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 650),
       switchInCurve: Curves.easeOutCubic,
@@ -75,7 +83,7 @@ class _AppLauncherState extends State<AppLauncher> {
           ),
         );
       },
-      child: _buildStage(),
+      child: _buildStage(session.isSignedIn),
     );
   }
 }

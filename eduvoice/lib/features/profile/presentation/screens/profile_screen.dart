@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../../auth/application/session_controller.dart';
+import '../../../auth/domain/models/app_user.dart';
+import '../../../settings/presentation/screens/settings_screen.dart';
+import '../../../volunteers/application/roster_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_palette.dart';
 import '../../../../shared/widgets/fade_slide_in.dart';
-import '../../../auth/domain/models/app_user.dart';
-import '../../data/profile_mock_data.dart';
+import '../../data/profile_repository.dart';
+import '../../domain/models/profile_models.dart';
 
-/// The host's profile: avatar, headline stats, about text and readiness skills.
+/// The signed-in account's profile: avatar, headline stats, about text and
+/// readiness skills, all read from the local database.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.onBack});
 
@@ -18,12 +23,51 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
+  final ProfileRepository _repository = ProfileRepository();
+
+  AppUser? _user;
+  List<ProfileStat> _stats = const [];
+  List<ReadinessSkill> _skills = const [];
+  int _rosterRevision = -1;
   bool _aboutExpanded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final user = SessionScope.of(context).user;
+    final revision = RosterScope.of(context).revision;
+    if (user == null || (user.id == _user?.id && revision == _rosterRevision)) {
+      return;
+    }
+    _user = user;
+    _rosterRevision = revision;
+    _load(user);
+  }
+
+  Future<void> _load(AppUser user) async {
+    final snapshot = await _repository.load(user);
+    if (!mounted || user.id != _user?.id) {
+      return;
+    }
+    setState(() {
+      _stats = [
+        ProfileStat(value: '${snapshot.groupCount}', label: 'Groups'),
+        ProfileStat(value: '${snapshot.volunteerCount}', label: 'Volunteers'),
+        ProfileStat(value: '${snapshot.broadcastCount}', label: 'Broadcasts'),
+      ];
+      _skills = snapshot.skills;
+    });
+  }
 
   void _toggleAbout() => setState(() => _aboutExpanded = !_aboutExpanded);
 
   @override
   Widget build(BuildContext context) {
+    final user = _user;
+    if (user == null) {
+      return const SizedBox.shrink();
+    }
+
     final palette = context.palette;
 
     return DecoratedBox(
@@ -51,12 +95,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 18),
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 60),
-                    child: _ProfileIdentity(user: ProfileMockData.user),
+                    child: _ProfileIdentity(user: user),
                   ),
                   const SizedBox(height: 22),
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 120),
-                    child: const _ProfileStats(stats: ProfileMockData.stats),
+                    child: _ProfileStats(stats: _stats),
                   ),
                   const SizedBox(height: 24),
                   const Divider(),
@@ -64,6 +108,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 180),
                     child: _AboutSection(
+                      about: user.about ?? '',
                       expanded: _aboutExpanded,
                       onToggle: _toggleAbout,
                     ),
@@ -78,7 +123,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 12),
                   FadeSlideIn(
                     delay: const Duration(milliseconds: 300),
-                    child: const _SkillWrap(skills: ProfileMockData.skills),
+                    child: _SkillWrap(skills: _skills),
                   ),
                 ],
               ),
@@ -94,6 +139,12 @@ class _ProfileTopBar extends StatelessWidget {
   const _ProfileTopBar({this.onBack});
 
   final VoidCallback? onBack;
+
+  void _openSettings(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SettingsScreen()));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +174,17 @@ class _ProfileTopBar extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 40),
+        SizedBox(
+          width: 40,
+          height: 40,
+          child: IconButton(
+            key: const Key('profile-settings-menu'),
+            onPressed: () => _openSettings(context),
+            padding: EdgeInsets.zero,
+            tooltip: 'Settings',
+            icon: const Icon(Icons.menu_rounded, size: 24),
+          ),
+        ),
       ],
     );
   }
@@ -265,8 +326,13 @@ class _ProfileStats extends StatelessWidget {
 }
 
 class _AboutSection extends StatelessWidget {
-  const _AboutSection({required this.expanded, required this.onToggle});
+  const _AboutSection({
+    required this.about,
+    required this.expanded,
+    required this.onToggle,
+  });
 
+  final String about;
   final bool expanded;
   final VoidCallback onToggle;
 
@@ -285,7 +351,7 @@ class _AboutSection extends StatelessWidget {
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: Text(
-            ProfileMockData.about,
+            about,
             maxLines: expanded ? null : 3,
             overflow: expanded ? TextOverflow.visible : TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
@@ -327,6 +393,16 @@ class _SkillWrap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (skills.isEmpty) {
+      return Text(
+        'No readiness skills recorded yet.',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontSize: 12,
+          color: context.palette.textSecondary,
+        ),
+      );
+    }
+
     return Wrap(
       spacing: 10,
       runSpacing: 10,
