@@ -370,6 +370,7 @@ Future<void> _createSchema(Database db) async {
       role TEXT NOT NULL CHECK (role IN ('host', 'leader', 'member')),
       school TEXT NOT NULL,
       group_id INTEGER REFERENCES volunteer_groups(id) ON DELETE SET NULL,
+      phone TEXT,
       about TEXT,
       created_at TEXT NOT NULL
     )
@@ -383,6 +384,7 @@ Future<void> _createSchema(Database db) async {
       detail TEXT NOT NULL,
       occurred_at TEXT NOT NULL,
       ended_at TEXT,
+      remote_id TEXT,
       is_unread INTEGER NOT NULL DEFAULT 0,
       group_id INTEGER REFERENCES volunteer_groups(id) ON DELETE CASCADE,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL
@@ -404,8 +406,10 @@ Future<void> _createSchema(Database db) async {
   await db.execute('CREATE INDEX alerts_occurred_at ON alerts (occurred_at)');
   await db.execute('CREATE INDEX alerts_created_by ON alerts (created_by)');
   await db.execute('CREATE INDEX user_skills_user_id ON user_skills (user_id)');
+  await db.execute('CREATE UNIQUE INDEX alerts_remote_id ON alerts (remote_id)');
 
   await _createAlertDismissals(db);
+  await _createAlertPreferences(db);
   await _createOneLeaderIndex(db);
 }
 
@@ -424,6 +428,16 @@ Future<void> upgradeDatabase(
     await _createAlertDismissals(db);
     await _createOneLeaderIndex(db);
   }
+  if (oldVersion < 3) {
+    await db.execute('ALTER TABLE alerts ADD COLUMN remote_id TEXT');
+    await db.execute(
+      'CREATE UNIQUE INDEX alerts_remote_id ON alerts (remote_id)',
+    );
+    await _createAlertPreferences(db);
+  }
+  if (oldVersion < 4) {
+    await db.execute('ALTER TABLE users ADD COLUMN phone TEXT');
+  }
 }
 
 /// Per-account stops: a group member who stops an alert dismisses it on their
@@ -435,6 +449,17 @@ Future<void> _createAlertDismissals(Database db) async {
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       dismissed_at TEXT NOT NULL,
       PRIMARY KEY (alert_id, user_id)
+    )
+  ''');
+}
+
+/// Per-account siren choice, so a member who mutes alerts stays muted after
+/// signing out and back in.
+Future<void> _createAlertPreferences(Database db) async {
+  await db.execute('''
+    CREATE TABLE alert_preferences (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      siren_muted INTEGER NOT NULL DEFAULT 0
     )
   ''');
 }

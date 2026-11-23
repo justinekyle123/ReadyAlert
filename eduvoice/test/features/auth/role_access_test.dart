@@ -41,10 +41,18 @@ void main() {
     expect(find.text('Red Cross Youth A'), findsWidgets);
     expect(find.text('Red Cross Youth B'), findsNothing);
     expect(find.text('Boy Scouts Troop 1'), findsNothing);
+
+    // Members can open their own group's roster, but only to read it.
+    await tester.tap(find.byKey(const Key('group-open-Red Cross Youth A')));
+    await settle(tester, 900);
+    expect(find.byKey(const Key('group-details-title')), findsOneWidget);
+    expect(find.text('Maria Santos'), findsWidgets);
+    expect(find.text('Andrea Bautista'), findsOneWidget);
+    expect(find.byKey(const Key('group-details-edit')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('leaders send alerts and add users but not groups', (
+  testWidgets('leaders send alerts but cannot manage the roster', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
@@ -53,13 +61,17 @@ void main() {
     await pumpAs(tester, 'maria.santos');
 
     expect(find.byKey(const Key('send-alert-button')), findsOneWidget);
-    expect(find.byKey(const Key('add-menu-button')), findsOneWidget);
+    // Creating and editing users or groups is a host responsibility.
+    expect(find.byKey(const Key('add-menu-button')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('add-menu-button')));
-    await settle(tester, 700);
+    await tester.tap(find.byKey(const Key('nav-groups')));
+    await settle(tester);
 
-    expect(find.text('Add user'), findsOneWidget);
-    expect(find.text('Add group'), findsNothing);
+    // Leaders can view their own roster, but cannot edit it.
+    await tester.tap(find.byKey(const Key('group-open-Red Cross Youth A')));
+    await settle(tester, 900);
+    expect(find.byKey(const Key('group-details-title')), findsOneWidget);
+    expect(find.byKey(const Key('group-details-edit')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -76,7 +88,7 @@ void main() {
     await settle(tester, 800);
 
     expect(
-      find.text('All Clear alert sent to 1 volunteer group.'),
+      find.text('All Clear alert sent to Red Cross Youth A.'),
       findsOneWidget,
     );
     expect(tester.takeException(), isNull);

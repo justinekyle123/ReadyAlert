@@ -48,7 +48,7 @@ class AppDatabase {
 
     return openDatabase(
       path,
-      version: 2,
+      version: 4,
       // Each test gets its own in-memory database instead of sqflite's cached
       // connection, which would otherwise stay locked by a finished test.
       singleInstance: path != inMemoryDatabasePath,

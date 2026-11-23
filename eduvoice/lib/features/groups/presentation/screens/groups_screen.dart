@@ -8,9 +8,8 @@ import '../../../auth/application/session_controller.dart';
 import '../../../auth/domain/models/app_user.dart';
 import '../../../volunteers/application/roster_controller.dart';
 import '../../../volunteers/data/group_repository.dart';
-import '../../../volunteers/domain/models/roster_exception.dart';
 import '../../../volunteers/domain/models/volunteer_group.dart';
-import '../../../volunteers/presentation/sheets/leader_picker_sheet.dart';
+import 'group_details_screen.dart';
 
 /// Volunteer groups: the rosters the host reaches when an alert goes out.
 class GroupsScreen extends StatefulWidget {
@@ -51,58 +50,28 @@ class _GroupsScreenState extends State<GroupsScreen> {
     setState(() => _groups = groups);
   }
 
-  Future<void> _assignLeader(VolunteerGroup group) async {
+  Future<void> _openGroup(VolunteerGroup group) async {
     final user = _user;
     if (user == null) {
       return;
     }
 
-    final roster = RosterScope.of(context);
-    final messenger = ScaffoldMessenger.of(context);
-    final picked = await showLeaderPickerSheet(
-      context,
-      actor: user,
-      groupId: group.id,
-      currentLeaderId: group.leaderId,
-      subtitle:
-          'Choose who leads ${group.name}. They can send alerts to this '
-          'roster.',
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => GroupDetailsScreen(initialGroup: group),
+      ),
     );
-    if (!mounted || picked == null || picked.id == group.leaderId) {
+    if (!mounted) {
       return;
     }
-
-    try {
-      await roster.assignLeader(
-        actor: user,
-        groupId: group.id,
-        userId: picked.id,
-      );
-      if (!mounted) {
-        return;
-      }
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(content: Text('${picked.name} now leads ${group.name}.')),
-        );
-    } on RosterException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error.message)));
-    }
+    // The group may have been renamed or its leader changed while it was open.
+    await _load(user);
   }
 
   @override
   Widget build(BuildContext context) {
     final palette = context.palette;
     final groups = _groups;
-    final canAssignLeaders = SessionScope.of(
-      context,
-    ).permissions.canAssignLeaders;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -154,9 +123,7 @@ class _GroupsScreenState extends State<GroupsScreen> {
                       delay: Duration(milliseconds: 170 + 40 * index),
                       child: _GroupTile(
                         group: groups[index],
-                        onAssignLeader: canAssignLeaders
-                            ? () => _assignLeader(groups[index])
-                            : null,
+                        onOpen: () => _openGroup(groups[index]),
                       ),
                     ),
                     if (index != groups.length - 1) const SizedBox(height: 10),
@@ -286,12 +253,12 @@ class _SummaryDivider extends StatelessWidget {
 }
 
 class _GroupTile extends StatelessWidget {
-  const _GroupTile({required this.group, this.onAssignLeader});
+  const _GroupTile({required this.group, required this.onOpen});
 
   final VolunteerGroup group;
 
-  /// Hosts can tap a roster to choose its leader; others get a static tile.
-  final VoidCallback? onAssignLeader;
+  /// Every role can open their group; the detail screen hides edits.
+  final VoidCallback onOpen;
 
   (Color, Color) _statusColors(AppPalette palette) => switch (group.status) {
     GroupReportStatus.safe => (palette.alertGreenOn, palette.alertGreenSoft),
@@ -319,8 +286,8 @@ class _GroupTile extends StatelessWidget {
         side: BorderSide(color: palette.border),
       ),
       child: InkWell(
-        key: onAssignLeader == null ? null : Key('group-leader-${group.name}'),
-        onTap: onAssignLeader,
+        key: Key('group-open-${group.name}'),
+        onTap: onOpen,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 14, 12),
           child: Row(
@@ -385,14 +352,12 @@ class _GroupTile extends StatelessWidget {
                 foreground: foreground,
                 background: background,
               ),
-              if (onAssignLeader != null) ...[
-                const SizedBox(width: 2),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  size: 18,
-                  color: palette.textSecondary,
-                ),
-              ],
+              const SizedBox(width: 2),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: palette.textSecondary,
+              ),
             ],
           ),
         ),

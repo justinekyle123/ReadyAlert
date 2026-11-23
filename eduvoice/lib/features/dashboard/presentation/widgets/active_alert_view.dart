@@ -12,10 +12,22 @@ import '../../../alerts/presentation/theme/alert_level_style.dart';
 /// one large neon circle that beats faster as the level rises, its message
 /// underneath, and a button to stop it. The siren loops until it is stopped.
 class ActiveAlertView extends StatefulWidget {
-  const ActiveAlertView({super.key, required this.level, required this.onStop});
+  const ActiveAlertView({
+    super.key,
+    required this.level,
+    required this.onStop,
+    this.initialMuted = false,
+    this.onMutedChanged,
+  });
 
   final AlertLevel level;
   final VoidCallback onStop;
+
+  /// Members who muted the siren before stay silent on the next alert.
+  final bool initialMuted;
+
+  /// Persists the mute choice on the signed-in account.
+  final ValueChanged<bool>? onMutedChanged;
 
   @override
   State<ActiveAlertView> createState() => _ActiveAlertViewState();
@@ -33,10 +45,14 @@ class _ActiveAlertViewState extends State<ActiveAlertView>
   @override
   void initState() {
     super.initState();
+    _muted = widget.initialMuted;
     _controller = AnimationController(
       vsync: this,
       duration: widget.level.pulsePeriod,
     )..repeat();
+    if (_muted) {
+      unawaited(_siren.setMuted(true));
+    }
     unawaited(_siren.start());
   }
 
@@ -65,6 +81,7 @@ class _ActiveAlertViewState extends State<ActiveAlertView>
   void _toggleMuted() {
     setState(() => _muted = !_muted);
     unawaited(_siren.setMuted(_muted));
+    widget.onMutedChanged?.call(_muted);
   }
 
   @override

@@ -82,20 +82,48 @@ void main() {
       expect(await repository.liveAlertFor(leader), isNull);
     });
 
+    test('a member mute choice is remembered per account', () async {
+      final member = await seededUser('andrea.bautista');
+      final otherMember = await seededUser('carlo.mendoza');
+      final repository = AlertRepository();
+
+      expect(await repository.isSirenMuted(member), isFalse);
+      await repository.setSirenMuted(member, true);
+
+      expect(await repository.isSirenMuted(member), isTrue);
+      expect(await repository.isSirenMuted(otherMember), isFalse);
+
+      await repository.setSirenMuted(member, false);
+      expect(await repository.isSirenMuted(member), isFalse);
+    });
+
     testWidgets('a member receives the group alert and can stop it', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(390, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final leader = await seededUser('maria.santos');
-      await AlertRepository().broadcast(
-        sender: leader,
-        level: AlertLevel.red,
+      // Widget tests run in a fake-async zone, so real database work has to
+      // happen inside runAsync just like the shared test harness does.
+      final leader = await tester.runAsync(
+        () => seededUser('maria.santos'),
       );
-      final member = await seededUser('andrea.bautista');
+      await tester.runAsync(
+        () => AlertRepository().broadcast(
+          sender: leader!,
+          level: AlertLevel.red,
+        ),
+      );
+      final member = await tester.runAsync(
+        () => seededUser('andrea.bautista'),
+      );
+      final live = await tester.runAsync(
+        () => AlertRepository().liveAlertFor(member!),
+      );
+      expect(live, isNotNull, reason: 'The broadcast must be live for Andrea.');
 
-      await pumpShell(tester, member);
+      await pumpShell(tester, member!);
+      await settle(tester, 1200);
 
       expect(find.byKey(const Key('active-alert-title')), findsOneWidget);
       expect(find.byKey(const Key('mute-siren-button')), findsOneWidget);

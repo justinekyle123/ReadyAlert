@@ -1,3 +1,7 @@
+import 'package:eduvoice/core/database/seed_data.dart';
+import 'package:eduvoice/features/auth/data/auth_repository.dart';
+import 'package:eduvoice/features/auth/domain/models/app_user.dart';
+import 'package:eduvoice/features/profile/data/profile_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -78,6 +82,73 @@ void main() {
 
     expect(find.byKey(const Key('login-email')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings edits the signed-in account details only', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpShell(tester);
+    await tester.tap(find.byKey(const Key('nav-profile')));
+    await advance(tester);
+    await tester.tap(find.byKey(const Key('profile-settings-menu')));
+    await advance(tester, 700);
+
+    final edit = find.byKey(const Key('settings-edit-details'));
+    await tester.ensureVisible(edit);
+    await tester.tap(edit);
+    await settle(tester, 800);
+
+    expect(find.byKey(const Key('edit-profile-name')), findsOneWidget);
+    // There is no role field on a self-service edit.
+    expect(find.byKey(const Key('edit-user-role-leader')), findsNothing);
+
+    await tester.enterText(
+      find.byKey(const Key('edit-profile-name')),
+      'Juan D. Cruz',
+    );
+    await tester.enterText(
+      find.byKey(const Key('edit-profile-email')),
+      'juan.cruz@pnhs.edu.ph',
+    );
+    await tester.enterText(
+      find.byKey(const Key('edit-profile-phone')),
+      '0917 555 0100',
+    );
+
+    final save = find.byKey(const Key('edit-profile-save'));
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await settle(tester, 1200);
+
+    expect(find.text('Your details are updated.'), findsOneWidget);
+    expect(find.text('juan.cruz@pnhs.edu.ph'), findsOneWidget);
+    expect(find.text('0917 555 0100'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('editing details never changes the role', () async {
+    final before = await signInAs('andrea.bautista');
+    final updated = await ProfileRepository().updateContactDetails(
+      user: before,
+      name: 'Andrea Bautista-Ramos',
+      email: 'andrea.ramos@pnhs.edu.ph',
+      phone: '0917 555 0101',
+    );
+
+    expect(updated.role, UserRole.member);
+    expect(updated.email, 'andrea.ramos@pnhs.edu.ph');
+
+    final signedIn = await AuthRepository().signIn(
+      identifier: 'andrea.ramos@pnhs.edu.ph',
+      password: seedPassword,
+    );
+    expect(signedIn, isNotNull);
+    expect(signedIn!.name, 'Andrea Bautista-Ramos');
+    expect(signedIn.role, UserRole.member);
+    expect(signedIn.phone, '0917 555 0101');
   });
 
   testWidgets('profile back button returns to Home', (tester) async {

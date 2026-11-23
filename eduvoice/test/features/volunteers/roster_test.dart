@@ -147,19 +147,29 @@ void main() {
       expect(demoted.role, UserRole.member);
     });
 
-    test('leaders add members to their own group only', () async {
+    test('leaders cannot add or edit the roster', () async {
       final leader = await seededUser('maria.santos');
+      final member = await seededUser('andrea.bautista');
       final roster = RosterRepository();
 
-      final account = await roster.createUser(
-        actor: leader,
-        name: 'Test Volunteer',
-        groupId: leader.groupId,
+      await expectLater(
+        roster.createUser(
+          actor: leader,
+          name: 'Test Volunteer',
+          groupId: leader.groupId,
+        ),
+        throwsA(isA<RosterException>()),
       );
-
-      expect(account.user.role, UserRole.member);
-      expect(account.user.groupId, leader.groupId);
-      expect(account.user.groupId, isNotNull);
+      await expectLater(
+        roster.updateUser(
+          actor: leader,
+          userId: member.id,
+          name: 'Renamed Volunteer',
+          role: UserRole.member,
+          groupId: leader.groupId,
+        ),
+        throwsA(isA<RosterException>()),
+      );
     });
 
     test('leaders cannot create groups or appoint leaders', () async {
@@ -220,6 +230,76 @@ void main() {
         throwsA(isA<RosterException>()),
       );
     });
+
+    test('the host renames a group, changes its status and leader', () async {
+      final host = await seededUser('juan.delacruz');
+      final roster = RosterRepository();
+      final troop = await groupNamed(host, 'Boy Scouts Troop 2');
+      final hannah = (await roster.leaderCandidates(actor: host)).firstWhere(
+        (contact) => contact.name == 'Hannah Salazar',
+      );
+
+      final updated = await roster.updateGroup(
+        actor: host,
+        groupId: troop.id,
+        name: 'Boy Scouts Elite',
+        status: GroupReportStatus.needsAssistance,
+        leaderId: hannah.id,
+      );
+
+      expect(updated.name, 'Boy Scouts Elite');
+      expect(updated.status, GroupReportStatus.needsAssistance);
+      expect(updated.leaderId, hannah.id);
+      expect(updated.leader, 'Hannah Salazar');
+      expect((await seededUser('mark.lim')).role, UserRole.member);
+    });
+
+    test('the host edits an account name, role and group', () async {
+      final host = await seededUser('juan.delacruz');
+      final roster = RosterRepository();
+      final andrea = await seededUser('andrea.bautista');
+      final groupB = await groupNamed(host, 'Red Cross Youth B');
+
+      final edited = await roster.updateUser(
+        actor: host,
+        userId: andrea.id,
+        name: 'Andrea Bautista-Ramos',
+        role: UserRole.member,
+        groupId: groupB.id,
+      );
+      expect(edited.user.name, 'Andrea Bautista-Ramos');
+      expect(edited.user.groupId, groupB.id);
+      // The sign-in ID never changes after an edit.
+      expect(edited.schoolId, 'andrea.bautista');
+      final reloaded = await seededUser('andrea.bautista');
+      expect(reloaded.name, 'Andrea Bautista-Ramos');
+      expect(reloaded.groupId, groupB.id);
+
+      final club = await roster.createGroup(actor: host, name: 'Robotics Club');
+      await roster.updateUser(
+        actor: host,
+        userId: andrea.id,
+        name: andrea.name,
+        role: UserRole.leader,
+        groupId: club.id,
+      );
+      final promoted = await seededUser('andrea.bautista');
+      expect(promoted.role, UserRole.leader);
+      expect((await groupNamed(host, 'Robotics Club')).leaderId, andrea.id);
+
+      await roster.updateUser(
+        actor: host,
+        userId: andrea.id,
+        name: andrea.name,
+        role: UserRole.member,
+        groupId: club.id,
+      );
+      expect((await seededUser('andrea.bautista')).role, UserRole.member);
+      expect(
+        (await groupNamed(host, 'Robotics Club')).leader,
+        'Unassigned',
+      );
+    });
   });
 
   group('roster screens', () {
@@ -236,6 +316,8 @@ void main() {
       await tester.tap(find.byKey(const Key('add-user-button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 420));
+      // Let the sheet load every group before picking one.
+      await settle(tester, 600);
 
       await tester.enterText(
         find.byKey(const Key('add-user-name')),
@@ -248,7 +330,10 @@ void main() {
       await tester.tap(find.byKey(const Key('add-user-group-1')));
       await tester.pump();
 
-      await tester.tap(find.byKey(const Key('add-user-submit')));
+      final submit = find.byKey(const Key('add-user-submit'));
+      await tester.ensureVisible(submit);
+      await tester.pump();
+      await tester.tap(submit);
       await settle(tester, 1200);
 
       expect(find.textContaining('Maria Clara Santos added'), findsOneWidget);
@@ -265,10 +350,23 @@ void main() {
       await tester.tap(find.byKey(const Key('nav-groups')));
       await settle(tester);
 
-      final tile = find.byKey(const Key('group-leader-Boy Scouts Troop 2'));
+      final tile = find.byKey(const Key('group-open-Boy Scouts Troop 2'));
       await tester.ensureVisible(tile);
       await tester.pump();
       await tester.tap(tile);
+      await settle(tester, 900);
+
+      expect(find.byKey(const Key('group-details-title')), findsOneWidget);
+      final edit = find.byKey(const Key('group-details-edit'));
+      await tester.ensureVisible(edit);
+      await tester.tap(edit);
+      await settle(tester, 900);
+
+      expect(find.byKey(const Key('group-editor-leader')), findsOneWidget);
+
+      final leaderTile = find.byKey(const Key('group-editor-leader'));
+      await tester.ensureVisible(leaderTile);
+      await tester.tap(leaderTile);
       await settle(tester, 800);
 
       expect(find.byKey(const Key('leader-search')), findsOneWidget);
@@ -281,10 +379,22 @@ void main() {
       );
       await settle(tester, 1200);
 
-      expect(
-        find.textContaining('Hannah Salazar now leads Boy Scouts Troop 2.'),
-        findsOneWidget,
-      );
+      final save = find.byKey(const Key('group-editor-save'));
+      await tester.ensureVisible(save);
+      await tester.pump();
+      await tester.tap(save);
+
+      // Saving runs a multi-step database transaction; keep giving the real
+      // database a runAsync window until the editor closes.
+      for (var attempt = 0; attempt < 12; attempt++) {
+        await settle(tester, 300);
+        if (find.byKey(const Key('group-editor-save')).evaluate().isEmpty) {
+          break;
+        }
+      }
+
+      expect(find.byKey(const Key('group-editor-save')), findsNothing);
+      expect(find.text('Group updated.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });

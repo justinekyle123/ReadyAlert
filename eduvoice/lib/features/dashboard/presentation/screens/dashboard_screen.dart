@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../../core/firebase/cloud_alert_sync.dart';
 import '../../../../core/theme/app_palette.dart';
 import '../../../../shared/widgets/fade_slide_in.dart';
+import '../../../../shared/widgets/local_only_banner.dart';
 import '../../../../shared/widgets/section_header.dart';
 import '../../../alerts/data/alert_repository.dart';
 import '../../../alerts/domain/models/alert_activity.dart';
@@ -45,6 +47,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// the dial is replaced by the live alert view.
   AlertActivity? _liveAlert;
 
+  /// Persisted per-account siren choice.
+  bool _sirenMuted = false;
+
+  StreamSubscription<void>? _liveSubscription;
+
+  @override
+  void dispose() {
+    _liveSubscription?.cancel();
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -56,12 +69,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _user = user;
     _rosterRevision = revision;
     _load(user);
+    _subscribeToLiveUpdates(user);
+  }
+
+  /// Listens for alerts raised or ended on another device when Firebase is
+  /// configured. The stream stays empty in local-only mode.
+  void _subscribeToLiveUpdates(AppUser user) {
+    _liveSubscription?.cancel();
+    _liveSubscription = _alertRepository.liveUpdates(user).listen((_) {
+      if (!mounted || user.id != _user?.id) {
+        return;
+      }
+      unawaited(_load(user));
+    });
   }
 
   Future<void> _load(AppUser user) async {
     final groups = await _groupRepository.groupsFor(user);
     final activities = await _alertRepository.historyFor(user);
     final live = await _alertRepository.liveAlertFor(user);
+    final muted = await _alertRepository.isSirenMuted(user);
     if (!mounted || user.id != _user?.id) {
       return;
     }
@@ -69,6 +96,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _groups = groups;
       _activities = activities;
       _liveAlert = live;
+      _sirenMuted = muted;
       if (live != null) {
         _activeLevel = live.level;
         _lastUpdated = live.occurredAt;
@@ -112,6 +140,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : '${selectedLevel.title} alert sent to '
                 '${_groups.length} volunteer $groupWord.',
     );
+  }
+
+  Future<void> _setSirenMuted(bool muted) async {
+    setState(() => _sirenMuted = muted);
+    final user = _user;
+    if (user == null) {
+      return;
+    }
+    try {
+      await _alertRepository.setSirenMuted(user, muted);
+    } on Object catch (error) {
+      debugPrint('Could not save the siren preference: $error');
+    }
   }
 
   void _showMessage(String message) {
@@ -176,6 +217,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (!CloudAlertSync.instance.enabled) ...[
+                    const FadeSlideIn(child: LocalOnlyBanner()),
+                    const SizedBox(height: 16),
+                  ],
                   FadeSlideIn(child: DashboardHeader(user: user)),
                   const SizedBox(height: 26),
                   FadeSlideIn(
@@ -193,6 +238,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ? ActiveAlertView(
                               key: const ValueKey('active-alert'),
                               level: liveAlert.level,
+                              initialMuted: _sirenMuted,
+                              onMutedChanged: (muted) =>
+                                  unawaited(_setSirenMuted(muted)),
                               onStop: () => unawaited(_stopAlert()),
                             )
                           : TriAlarmStatusCard(

@@ -50,6 +50,49 @@ class RosterController extends ChangeNotifier {
     return group;
   }
 
+  Future<NewAccount> updateUser({
+    required AppUser actor,
+    required int userId,
+    required String name,
+    required UserRole role,
+    int? groupId,
+  }) async {
+    final account = await _repository.updateUser(
+      actor: actor,
+      userId: userId,
+      name: name,
+      role: role,
+      groupId: groupId,
+    );
+    _changed();
+    return account;
+  }
+
+  Future<VolunteerGroup> updateGroup({
+    required AppUser actor,
+    required int groupId,
+    required String name,
+    required GroupReportStatus status,
+    int? leaderId,
+  }) async {
+    final group = await _repository.updateGroup(
+      actor: actor,
+      groupId: groupId,
+      name: name,
+      status: status,
+      leaderId: leaderId,
+    );
+    _changed();
+    return group;
+  }
+
+  Future<List<AppUser>> membersForGroup({
+    required AppUser actor,
+    required int groupId,
+  }) {
+    return _repository.membersForGroup(actor: actor, groupId: groupId);
+  }
+
   Future<void> assignLeader({
     required AppUser actor,
     required int groupId,

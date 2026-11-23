@@ -15,6 +15,9 @@ class AppUser {
     required this.name,
     required this.role,
     required this.school,
+    this.schoolId,
+    this.email,
+    this.phone,
     this.groupId,
     this.about,
   });
@@ -25,6 +28,9 @@ class AppUser {
       name: map['name'] as String,
       role: UserRole.values.byName(map['role'] as String),
       school: map['school'] as String,
+      schoolId: map['school_id'] as String?,
+      email: map['email'] as String?,
+      phone: map['phone'] as String?,
       groupId: map['group_id'] as int?,
       about: map['about'] as String?,
     );
@@ -34,6 +40,14 @@ class AppUser {
   final String name;
   final UserRole role;
   final String school;
+
+  /// The ID this account signs in with, synced so alerts can be traced back
+  /// to the same person on another device.
+  final String? schoolId;
+
+  /// Sign-in email and contact number, editable by the account holder.
+  final String? email;
+  final String? phone;
 
   /// The volunteer group this account belongs to; hosts oversee every group.
   final int? groupId;

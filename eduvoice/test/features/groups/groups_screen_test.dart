@@ -68,6 +68,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the host opens a selected group roster', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await pumpShell(tester);
+    await tester.tap(find.byKey(const Key('nav-groups')));
+    await advance(tester);
+
+    final tile = find.byKey(const Key('group-open-Red Cross Youth A'));
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await settle(tester, 900);
+
+    expect(find.byKey(const Key('group-details-title')), findsOneWidget);
+    expect(find.text('Maria Santos'), findsWidgets);
+    expect(find.text('Andrea Bautista'), findsOneWidget);
+    expect(find.byKey(const Key('group-details-edit')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('group-details-back')));
+    await advance(tester);
+    expect(find.text('Rosters & check-in'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('groups back button returns to Home', (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));

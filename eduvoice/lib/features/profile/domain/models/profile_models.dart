@@ -1,5 +1,15 @@
 import 'package:flutter/material.dart';
 
+/// A self-service profile change that cannot be saved, worded for the user.
+class ProfileUpdateException implements Exception {
+  const ProfileUpdateException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// Accent used by a readiness skill chip, resolved against the active palette.
 enum SkillTint { coral, green, yellow, red, muted }
 

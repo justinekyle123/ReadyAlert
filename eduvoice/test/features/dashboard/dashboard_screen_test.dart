@@ -1,3 +1,4 @@
+import 'package:eduvoice/core/firebase/cloud_alert_sync.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,6 +15,7 @@ Future<void> advance(WidgetTester tester, [int milliseconds = 600]) =>
 void main() {
   setUp(() async {
     await setUpTestDatabase();
+    CloudAlertSync.instance.disable();
   });
 
   testWidgets('dashboard shows the tri-alarm dial and groups', (tester) async {
@@ -32,6 +34,16 @@ void main() {
     expect(find.text('Red Cross Youth A'), findsWidgets);
     expect(find.text('Recent activity'), findsOneWidget);
     expect(find.text('Duck, cover, and hold'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('warns when Firebase is off so alerts look local-only', (
+    tester,
+  ) async {
+    await pumpDashboard(tester);
+
+    expect(find.byKey(const Key('local-only-banner')), findsOneWidget);
+    expect(find.text('Online alerts are off'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

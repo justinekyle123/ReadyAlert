@@ -1,6 +1,10 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/firebase/cloud_alert_sync.dart';
 import '../../auth/domain/models/app_user.dart';
 import '../../auth/domain/role_permissions.dart';
 import '../domain/models/alert_activity.dart';
@@ -11,6 +15,10 @@ import '../domain/models/alert_level.dart';
 /// Visibility follows the sender's role: hosts see every alert, while leaders
 /// and members see school-wide broadcasts plus their own group's alerts. Live
 /// alerts are scoped the same way, so a leader's alert only rings its group.
+///
+/// When Firebase is configured, broadcasts are also published to Firestore and
+/// live updates from other devices are merged into the local database. Without
+/// Firebase every method keeps working entirely offline.
 class AlertRepository {
   AlertRepository({AppDatabase? database})
     : _database = database ?? AppDatabase.instance;
@@ -66,6 +74,28 @@ class AlertRepository {
     return rows.isEmpty ? null : AlertActivity.fromMap(rows.first);
   }
 
+  /// Whether [user] has muted the siren on this account.
+  Future<bool> isSirenMuted(AppUser user) async {
+    final db = await _database.database;
+    final rows = await db.query(
+      'alert_preferences',
+      columns: ['siren_muted'],
+      where: 'user_id = ?',
+      whereArgs: [user.id],
+      limit: 1,
+    );
+    return rows.isNotEmpty && (rows.first['siren_muted'] as int? ?? 0) == 1;
+  }
+
+  /// Remembers a member's mute choice across sign-ins.
+  Future<void> setSirenMuted(AppUser user, bool muted) async {
+    final db = await _database.database;
+    await db.insert('alert_preferences', {
+      'user_id': user.id,
+      'siren_muted': muted ? 1 : 0,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
   /// Stops [alertId] for [user].
   ///
   /// The sender ends the alert for the whole group; anyone else in the group
@@ -77,7 +107,7 @@ class AlertRepository {
     final db = await _database.database;
     final rows = await db.query(
       'alerts',
-      columns: ['created_by'],
+      columns: ['created_by', 'remote_id'],
       where: 'id = ?',
       whereArgs: [alertId],
       limit: 1,
@@ -93,6 +123,10 @@ class AlertRepository {
         where: 'id = ? AND ended_at IS NULL',
         whereArgs: [alertId],
       );
+      final remoteId = rows.first['remote_id'] as String?;
+      if (remoteId != null) {
+        await _endRemoteSilently(remoteId);
+      }
       return;
     }
 
@@ -135,15 +169,34 @@ class AlertRepository {
       occurredAt: now,
     );
 
+    // Stable across the sending device and Firestore, so the snapshot stream
+    // recognises its own document instead of importing a duplicate.
+    final remoteId = 'a${sender.id}_${now.microsecondsSinceEpoch}';
+
     final id = await db.insert('alerts', {
       'level': level.name,
       'title': activity.title,
       'detail': activity.detail,
       'occurred_at': now.toIso8601String(),
+      'remote_id': remoteId,
       'is_unread': 0,
       'group_id': groupId,
       'created_by': sender.id,
     });
+
+    if (CloudAlertSync.instance.enabled) {
+      final groupName = groupId == null
+          ? null
+          : await _savedGroupName(db, groupId);
+      unawaited(
+        _publishSilently(
+          remoteId: remoteId,
+          activity: activity,
+          groupName: groupName,
+          sender: sender,
+        ),
+      );
+    }
 
     return activity.copyWith(id: id);
   }
@@ -184,6 +237,127 @@ class AlertRepository {
     return rows.first['total'] as int? ?? 0;
   }
 
+  /// Emits whenever a remote device changes an alert this account can see.
+  ///
+  /// Each event has already been merged into SQLite by the time it is
+  /// delivered, so screens only need to reload their queries. The stream is
+  /// empty when Firebase is not configured.
+  Stream<void> liveUpdates(AppUser user) async* {
+    if (!CloudAlertSync.instance.enabled) {
+      return;
+    }
+
+    final permissions = RolePermissions.of(user);
+    final db = await _database.database;
+    final groupName = permissions.canSeeAllGroups
+        ? null
+        : await _savedGroupName(db, user.groupId);
+
+    await for (final remoteAlerts in CloudAlertSync.instance.watchRecent()) {
+      var changed = false;
+      for (final remote in remoteAlerts) {
+        if (!permissions.canSeeAllGroups &&
+            remote.groupName != null &&
+            remote.groupName != groupName) {
+          continue;
+        }
+        if (await _importRemote(remote)) {
+          changed = true;
+        }
+      }
+      if (changed) {
+        yield null;
+      }
+    }
+  }
+
+  /// Merges one remote alert into the local history.
+  ///
+  /// Finished remote alerts only close an alert that is already known; they
+  /// are not imported as new history on every device.
+  Future<bool> _importRemote(RemoteAlert remote) async {
+    final db = await _database.database;
+    final existing = await db.query(
+      'alerts',
+      columns: ['id', 'ended_at'],
+      where: 'remote_id = ?',
+      whereArgs: [remote.id],
+      limit: 1,
+    );
+
+    if (existing.isNotEmpty) {
+      if (remote.endedAt != null && existing.first['ended_at'] == null) {
+        await db.update(
+          'alerts',
+          {'ended_at': remote.endedAt!.toIso8601String()},
+          where: 'remote_id = ?',
+          whereArgs: [remote.id],
+        );
+        return true;
+      }
+      return false;
+    }
+
+    if (remote.endedAt != null) {
+      return false;
+    }
+
+    int? groupId;
+    if (remote.groupName != null) {
+      final groups = await db.query(
+        'volunteer_groups',
+        columns: ['id'],
+        where: 'LOWER(name) = ?',
+        whereArgs: [remote.groupName!.toLowerCase()],
+        limit: 1,
+      );
+      if (groups.isEmpty) {
+        // Another school's group, or one this device has not created yet.
+        return false;
+      }
+      groupId = groups.first['id'] as int;
+    }
+
+    await db.insert('alerts', {
+      'level': remote.level.name,
+      'title': remote.title,
+      'detail': remote.detail,
+      'occurred_at': remote.occurredAt.toIso8601String(),
+      'remote_id': remote.id,
+      'is_unread': 1,
+      'group_id': groupId,
+      'created_by': null,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    return true;
+  }
+
+  Future<void> _publishSilently({
+    required String remoteId,
+    required AlertActivity activity,
+    required String? groupName,
+    required AppUser sender,
+  }) async {
+    try {
+      await CloudAlertSync.instance.publish(
+        remoteId: remoteId,
+        activity: activity,
+        groupName: groupName,
+        senderName: sender.name,
+        senderSchoolId: sender.schoolId,
+      );
+    } on Object catch (error) {
+      debugPrint('Alert $remoteId stayed local; Firebase publish failed: $error');
+    }
+  }
+
+  Future<void> _endRemoteSilently(String remoteId) async {
+    try {
+      await CloudAlertSync.instance.end(remoteId);
+    } on Object catch (error) {
+      debugPrint('Alert $remoteId stayed local; Firebase end failed: $error');
+    }
+  }
+
   static String broadcastTitle(AlertLevel level) => switch (level) {
     AlertLevel.green => 'All clear broadcast',
     AlertLevel.yellow => 'Caution alert broadcast',
@@ -191,8 +365,12 @@ class AlertRepository {
   };
 
   Future<String> _groupName(Database db, int? groupId) async {
+    return await _savedGroupName(db, groupId) ?? 'your group';
+  }
+
+  Future<String?> _savedGroupName(Database db, int? groupId) async {
     if (groupId == null) {
-      return 'your group';
+      return null;
     }
     final rows = await db.query(
       'volunteer_groups',
@@ -201,6 +379,6 @@ class AlertRepository {
       whereArgs: [groupId],
       limit: 1,
     );
-    return rows.isEmpty ? 'your group' : rows.first['name'] as String;
+    return rows.isEmpty ? null : rows.first['name'] as String;
   }
 }
